@@ -13,8 +13,9 @@ from enemy import Grunt
 class Player:
 
     def __init__(self, frame):
+
         self.frame = frame
-        self.position = Pose(c.ARENA_SIZE) * 0.5
+        self.position = Pose(c.ARENA_SIZE) * 0.5 - Pose((0, 1000))
         Camera.position = self.position.copy() - Pose(c.WINDOW_SIZE)*0.5
         self.velocity = Pose((0, 0))
         self.sprite = Sprite(12, (0, 0))
@@ -32,16 +33,15 @@ class Player:
             reverse_x=True,
         )
         idle_right = Animation.from_path(
-            "assets/images/idle.png",
+            "assets/images/forward_idle.png",
             sheet_size=(8, 1),
-            frame_count=2,
-            scale=0.25,
+            frame_count=8,
         )
         idle_left = Animation.from_path(
-            "assets/images/idle.png",
+            "assets/images/forward_idle.png",
             sheet_size=(8, 1),
-            frame_count=2,
-            scale=0.25,
+            frame_count=8,
+            scale=1.0,
             reverse_x=True,
         )
         walk_back_right = Animation.from_path(
@@ -72,6 +72,13 @@ class Player:
             },
             loop=True
         )
+
+        self.number_surfs = {
+            mode: pygame.image.load(f"assets/images/{mode}.png") for mode in c.VALID_MODES
+        }
+
+        self.since_roll_finish = 0
+
         self.sprite.add_animation({"Rolling": rolling})
         self.sprite.add_callback("Rolling", self.stop_rolling)
         self.sprite.start_animation("WalkRight")
@@ -87,7 +94,13 @@ class Player:
         self.aim_distance = 75
         self.aim_knockback = 0
         self.knockback_velocity = 0
-        self.radius = 50
+        self.radius = 40
+
+        self.shadow = pygame.Surface((self.radius*2, self.radius*2))
+        self.shadow.fill((255, 255, 0))
+        self.shadow.set_colorkey((255, 255, 0))
+        pygame.draw.circle(self.shadow, (0, 0, 0), (self.radius, self.radius), self.radius)
+        self.shadow.set_alpha(60)
 
         self.since_kick = 0
         self.roll_sound = SoundManager.load("assets/sounds/die_roll.mp3")
@@ -100,12 +113,12 @@ class Player:
         self.shurikens = [SoundManager.load(f"assets/sounds/Shuriken-{rel+1}.mp3") for rel in range(3)]
         for shuriken in self.shurikens:
             shuriken.set_volume(0.3)
-        self.pistols = [SoundManager.load(f"assets/sounds/Pistol-{rel+1}.mp3") for rel in range(3)]
+        self.pistols = [SoundManager.load(f"assets/sounds/Pistol_v2.mp3") for rel in range(3)]
         for shot in self.pistols:
-            shot.set_volume(0.3)
-        self.flame_bursts = [SoundManager.load(f"assets/sounds/Flame-Burst-{rel+1}.mp3") for rel in range(3)]
+            shot.set_volume(0.5)
+        self.flame_bursts = [SoundManager.load(f"assets/sounds/Flame-Burst_v2.ogg") for rel in range(3)]
         for shot in self.flame_bursts:
-            shot.set_volume(0.3)
+            shot.set_volume(1)
         self.breads = [SoundManager.load(f"assets/sounds/Bread-{rel+1}.mp3") for rel in range(3)]
         for shot in self.breads:
             shot.set_volume(0.2)
@@ -116,6 +129,11 @@ class Player:
         pygame.mixer.music.set_volume(0.4)
 
     def update(self, dt, events):
+        if self.rolling:
+            if self.since_roll_finish != 0:
+                self.since_roll_finish = 0
+        else:
+            self.since_roll_finish += dt
         self.last_fire += dt
         self.process_inputs(dt, events)
         self.sprite.set_position(self.position.get_position())
@@ -247,6 +265,29 @@ class Player:
         self.frame.shake(self.velocity,15)
 
     def draw(self, surface, offset=(0, 0)):
+
+        if self.since_roll_finish < 0.5 and not self.rolling:
+            if self.weapon_mode in self.number_surfs:
+                num = self.number_surfs[self.weapon_mode]
+                num.set_colorkey((255, 0, 255))
+                scale = 1
+                alpha = 1
+                if self.since_roll_finish < 0.1:
+                    scale = 1.5 - self.since_roll_finish*5
+                    alpha = self.since_roll_finish*10
+                elif self.since_roll_finish > 0.4:
+                    scale = 1 - (self.since_roll_finish - 0.4) * 5
+                    alpha = 1 - (self.since_roll_finish - 0.4) * 10
+                w = int(num.get_width() * scale)
+                h = int(num.get_height() * scale)
+                num = pygame.transform.scale(num, (w, h))
+                x = self.position.x - offset[0] - w//2
+                y = self.position.y - offset[1] - h//2 - 90
+                num.set_alpha(alpha*255)
+                surface.blit(num, (x, y))
+
+        surface.blit(self.shadow, (self.position.x - offset[0] - self.shadow.get_width()//2,
+                                   self.position.y - offset[1] - self.shadow.get_height()//2 + 20))
         self.draw_hand(surface, offset, up=True)
         self.sprite.draw(surface, offset)
         self.draw_hand(surface, offset, up=False)

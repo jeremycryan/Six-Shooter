@@ -8,7 +8,7 @@ import math
 from particle import SparkParticle
 import random
 
-from enemy import Grunt
+from enemy import Grunt, BossMan
 
 class Frame:
     def __init__(self):
@@ -34,6 +34,7 @@ class GameFrame(Frame):
     def load(self):
         self.player = Player(self)
         self.enemies = [Grunt((1000, 1000), self)]
+        self.enemies.append(BossMan((c.WINDOW_WIDTH//2, 30), self))
         self.particles = []
         self.projectiles = []
         self.background = Background()
@@ -44,6 +45,7 @@ class GameFrame(Frame):
         self.since_shake = 0
 
     def update(self, dt, events):
+        self.background.update(dt, events)
         self.player.update(dt, events)
         self.since_shake += dt
 
@@ -86,6 +88,11 @@ class GameFrame(Frame):
                 position = self.player.hand_sprite.x, self.player.hand_sprite.y
                 self.particles.append(SparkParticle(position))
             random.choice(self.player.flame_bursts).play()
+            for enemy in self.enemies:
+                pos_on_screen = Camera.world_to_screen(enemy.position.get_position())
+                if pos_on_screen.x > 0 and pos_on_screen.x < c.WINDOW_WIDTH:
+                    if pos_on_screen.y > 0 and pos_on_screen.y < c.WINDOW_HEIGHT:
+                        enemy.take_damage(105)
 
     def check_enemy_and_projectile_collisions(self):
         for enemy in self.enemies:

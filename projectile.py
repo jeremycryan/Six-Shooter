@@ -5,7 +5,7 @@ import random
 import constants as c
 
 from pyracy.sprite_tools import Sprite, Animation
-from particle import Puff, SparkParticle
+from particle import Puff, SparkParticle, Casing
 
 
 class Projectile:
@@ -45,7 +45,12 @@ class PistolBullet(Projectile):
 
     def __init__(self, position, direction, frame):
         self.frame = frame
+
         super().__init__(position, direction)
+
+        casing_position = Pose(position) * 0.25 + self.frame.player.position * 0.75
+        self.frame.particles.append(Casing(casing_position.get_position()))
+
         if self.velocity.magnitude() == 0:
             self.velocity = Pose((1, 0))
         angle = self.velocity.get_angle_of_position()

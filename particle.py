@@ -99,6 +99,41 @@ class MuzzleFlash(Particle):
         surf.blit(my_surf, (x, y))
 
 
+class Casing(Particle):
+    surf = None
+
+    def __init__(self, position, duration=20):
+
+        x_velocity = (random.random() * 80 + 30) * random.choice((-1, 1))
+        self.z_velocity = -750
+        velocity = Pose((x_velocity, 0))
+        self.z = -0
+        super().__init__(position, velocity=velocity.get_position(), duration=duration)
+        self.landed = False
+        if not Casing.surf:
+            Casing.surf = pygame.image.load("assets/images/casing.png")
+        self.surf = pygame.transform.scale(Casing.surf.copy(), (10, 20))
+        self.random_angle = random.random()*360
+
+    def update(self, dt, events):
+        super().update(dt, events)
+        if not self.landed:
+            self.z += self.z_velocity*dt
+            self.z_velocity += 4000*dt
+            if self.z > 40:
+                self.landed = True
+                self.z_velocity = 0
+                self.velocity = Pose((0, 0))
+
+    def draw(self, surf, offset=(0, 0)):
+        angle = self.through() * 200 * (self.velocity.x) + self.random_angle
+        casing = pygame.transform.rotate(self.surf, angle)
+        x = self.position.x - offset[0] - casing.get_width()
+        y = self.position.y - offset[1] - casing.get_height() + self.z
+        surf.blit(casing, (x, y))
+
+
+
 class SparkParticle(Particle):
 
     def __init__(self, position, velocity=None, duration=0.5, color=(255, 0, 0), scale=40, velocity_scale=1.0):
@@ -141,4 +176,3 @@ class SparkParticle(Particle):
 
         color = tuple([self.color[i] * self.through() + 255 * (1 - self.through()) for i in range(3)])
         pygame.draw.polygon(surf, color, corners)
-
