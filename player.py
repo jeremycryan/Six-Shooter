@@ -8,6 +8,7 @@ from particle import Puff,MuzzleFlash,SparkParticle
 from projectile import PistolBullet, Bread, Shuriken
 import random
 from sound_manager import SoundManager
+from enemy import Grunt
 
 class Player:
 
@@ -23,14 +24,12 @@ class Player:
             "assets/images/walk_right.png",
             sheet_size=(8, 1),
             frame_count=8,
-            scale=0.25,
         )
         walk_left = Animation.from_path(
             "assets/images/walk_right.png",
             sheet_size=(8, 1),
             frame_count=8,
             reverse_x=True,
-            scale=0.25,
         )
         idle_right = Animation.from_path(
             "assets/images/idle.png",
@@ -49,13 +48,12 @@ class Player:
             "assets/images/walk_right_back.png",
             sheet_size=(8, 1),
             frame_count=8,
-            scale=0.25,
+
         )
         walk_back_left = Animation.from_path(
             "assets/images/walk_right_back.png",
             sheet_size=(8, 1),
             frame_count=8,
-            scale=0.25,
             reverse_x=True,
         )
         rolling = Animation.from_path(
@@ -92,7 +90,30 @@ class Player:
         self.radius = 50
 
         self.since_kick = 0
-        self.roll_sound = SoundManager.load("assets/sounds/die_roll.wav")
+        self.roll_sound = SoundManager.load("assets/sounds/die_roll.mp3")
+        self.footsteps = [SoundManager.load(f"assets/sounds/Footstep-{rel+1}.mp3") for rel in range(3)]
+        for step in self.footsteps:
+            step.set_volume(0.1)
+        self.shots = [SoundManager.load(f"assets/sounds/Gatling-Gun-{rel+1}.mp3") for rel in range(3)]
+        for shot in self.shots:
+            shot.set_volume(0.3)
+        self.shurikens = [SoundManager.load(f"assets/sounds/Shuriken-{rel+1}.mp3") for rel in range(3)]
+        for shuriken in self.shurikens:
+            shuriken.set_volume(0.3)
+        self.pistols = [SoundManager.load(f"assets/sounds/Pistol-{rel+1}.mp3") for rel in range(3)]
+        for shot in self.pistols:
+            shot.set_volume(0.3)
+        self.flame_bursts = [SoundManager.load(f"assets/sounds/Flame-Burst-{rel+1}.mp3") for rel in range(3)]
+        for shot in self.flame_bursts:
+            shot.set_volume(0.3)
+        self.breads = [SoundManager.load(f"assets/sounds/Bread-{rel+1}.mp3") for rel in range(3)]
+        for shot in self.breads:
+            shot.set_volume(0.2)
+
+        pygame.mixer.music.load("assets/sounds/Music-Intro.mp3")
+        pygame.mixer.music.play()
+        pygame.mixer.music.queue("assets/sounds/Music-Main-Loop.mp3", loops=-1)
+        pygame.mixer.music.set_volume(0.4)
 
     def update(self, dt, events):
         self.last_fire += dt
@@ -111,14 +132,15 @@ class Player:
         Camera.target = self.position.copy() * 0.7 + mpos * 0.3
         if self.animation_state == c.WALKING:
             self.since_kick += dt
-        if self.since_kick > 1/6 and self.velocity.magnitude() > 0:
+        if self.since_kick > 1/3 and self.velocity.magnitude() > 0:
+            self.since_kick -= 1 / 3
             for i in range(3):
                 start_position = self.position + self.velocity * (1/self.velocity.magnitude()) * 30
                 start_position += Pose((random.random() * 10 - 5, random.random() * 10 - 5))
                 start_velocity = self.velocity * -0.3
                 start_velocity.rotate_position(20 * (i-1))
                 self.frame.particles.append(Puff(start_position.get_position(), start_velocity.get_position()))
-                self.since_kick -= 1/6
+                random.choice(self.footsteps).play()
         if self.position.x - self.radius < 0:
             self.position.x = self.radius
         if self.position.x + self.radius > c.ARENA_WIDTH:
@@ -176,7 +198,7 @@ class Player:
             clear_time = old_state != c.WALKING
             if clear_time:
                 self.since_kick = 0
-            if self.velocity.y >= -5:
+            if direction.y >= 0:
                 if self.last_lr_direction == c.RIGHT:
                     self.sprite.start_animation("WalkRight", restart_if_active=False, clear_time=clear_time)
                 else:
@@ -209,6 +231,8 @@ class Player:
         self.velocity = direction * 750
         self.firing = False
         self.roll_sound.play()
+
+        self.frame.enemies.append(Grunt((1000, 1000), self.frame))
 
     def stop_rolling(self):
         self.rolling = False
@@ -452,8 +476,8 @@ class Player:
             self.fire_sprite.update(dt, events)
 
         if self.weapon_mode == c.GATLING and not self.rolling:
-            if self.velocity.magnitude() > 200:
-                self.velocity.scale_to(200)
+            if self.velocity.magnitude() > 160:
+                self.velocity.scale_to(160)
 
     def fire(self):
         if self.last_fire < c.COOLDOWNS[self.weapon_mode]:
@@ -477,7 +501,8 @@ class Player:
             else:
                 self.hand_sprite.start_animation("GunFireRight")
             self.frame.particles.append(MuzzleFlash(offset.get_position(), self.arm_angle))
-            self.frame.projectiles.append(PistolBullet(offset.get_position(), relative.get_position()))
+            self.frame.projectiles.append(PistolBullet(offset.get_position(), relative.get_position(), self.frame))
+            random.choice(self.pistols).play()
             knockback = relative * -1
             knockback.scale_to(500)
             self.frame.shake(direction=relative, amt=15)
@@ -506,7 +531,10 @@ class Player:
                 (math.cos(self.arm_angle * math.pi / 180), -math.sin(self.arm_angle * math.pi / 180))) * (
                                         self.aim_distance + 5) + Pose((0, 25))
             self.frame.particles.append(MuzzleFlash(muzzle_offset.get_position(), self.arm_angle, duration=0.03))
-            self.frame.projectiles.append(PistolBullet(particle_offset.get_position(), relative.get_position()))
+            bullet = PistolBullet(particle_offset.get_position(), relative.get_position(), self.frame)
+            random.choice(self.shots).play()
+            bullet.damage = 40
+            self.frame.projectiles.append(bullet)
             knockback = relative * -1
             knockback.scale_to(350)
             self.frame.shake(direction=relative, amt=10)
@@ -531,6 +559,7 @@ class Player:
                 self.frame.projectiles.append(Shuriken(offset.get_position(), new_relative.get_position(), self.frame))
             knockback = relative * -1
             knockback.scale_to(500)
+            random.choice(self.shurikens).play()
         elif self.weapon_mode == c.FIRE:
             self.knockback_velocity = 0
             if relative.x < 0:

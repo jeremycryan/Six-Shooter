@@ -6,6 +6,9 @@ from background import Background
 from primitives import Pose
 import math
 from particle import SparkParticle
+import random
+
+from enemy import Grunt
 
 class Frame:
     def __init__(self):
@@ -30,6 +33,7 @@ class GameFrame(Frame):
 
     def load(self):
         self.player = Player(self)
+        self.enemies = [Grunt((1000, 1000), self)]
         self.particles = []
         self.projectiles = []
         self.background = Background()
@@ -50,6 +54,11 @@ class GameFrame(Frame):
         else:
             self.shake_amp = Pose((0, 0))
 
+        for enemy in self.enemies[:]:
+            enemy.update(dt, events)
+            if enemy.destroyed:
+                self.enemies.remove(enemy)
+        self.enemies.sort(key=lambda x:x.position.y)
 
         keep_particles = []
         for particle in self.particles:
@@ -65,6 +74,9 @@ class GameFrame(Frame):
                 keep_projectiles.append(projectile)
         self.projectiles = keep_projectiles
 
+        self.check_enemy_and_projectile_collisions()
+        self.check_enemy_and_enemy_collisions(dt, events)
+
         self.red_flash_alpha -= 5 * dt
         self.red_flash_alpha *= 0.03**dt
         if self.player.weapon_mode == c.FIRE and self.player.firing and int(self.player.hand_sprite.get_frame_num()) == 7 and self.red_flash_alpha < 10:
@@ -73,6 +85,30 @@ class GameFrame(Frame):
             for i in range(16):
                 position = self.player.hand_sprite.x, self.player.hand_sprite.y
                 self.particles.append(SparkParticle(position))
+            random.choice(self.player.flame_bursts).play()
+
+    def check_enemy_and_projectile_collisions(self):
+        for enemy in self.enemies:
+            for projectile in self.projectiles:
+                projectile_position = projectile.position + Pose((0, projectile.z))
+                if (enemy.position - projectile_position).magnitude() < enemy.radius + projectile.radius:
+                    enemy.get_hit_by(projectile)
+
+    def check_enemy_and_enemy_collisions(self, dt, events):
+        for i, enemy in enumerate(self.enemies):
+            for j, enemy2 in enumerate(self.enemies):
+                if j <= i:
+                    continue
+                diff = enemy.position - enemy2.position
+                dist = (diff).magnitude()
+                if dist < enemy.radius + enemy2.radius:
+                    overlap_amt = enemy.radius + enemy2.radius - dist
+                    overlap_vec = diff.copy()
+                    overlap_vec.scale_to(overlap_amt * 10)
+                    enemy.velocity += overlap_vec*dt
+                    enemy2.velocity += overlap_vec*-dt
+
+
 
     def draw(self, surface, offset=(0, 0)):
         surface.fill((0, 0, 0))
@@ -84,7 +120,13 @@ class GameFrame(Frame):
             if particle.layer == c.BACKGROUND:
                 particle.draw(surface, offset=offset)
         for projectile in self.projectiles:
-            projectile.draw(surface, offset=offset)
+            if hasattr(projectile, "landed") and projectile.landed:
+                projectile.draw(surface, offset=offset)
+        for enemy in self.enemies:
+            enemy.draw(surface, offset=offset)
+        for projectile in self.projectiles:
+            if not hasattr(projectile, "landed") or not projectile.landed:
+                projectile.draw(surface, offset=offset)
         self.player.draw(surface, offset=(offset))
         for particle in self.particles:
             if particle.layer == c.FOREGROUND:

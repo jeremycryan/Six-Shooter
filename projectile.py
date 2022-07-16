@@ -5,7 +5,7 @@ import random
 import constants as c
 
 from pyracy.sprite_tools import Sprite, Animation
-from particle import Puff
+from particle import Puff, SparkParticle
 
 
 class Projectile:
@@ -17,6 +17,9 @@ class Projectile:
         self.destroyed = False
         self.age = 0
         self.radius = 10
+        self.damage = 60
+        self.slowdown = 1.0
+        self.z = 0
 
     def update(self, dt, events):
         self.position += self.velocity * dt
@@ -34,10 +37,14 @@ class Projectile:
     def on_impact(self):
         pass
 
+    def hit(self, enemy):
+        self.destroyed = True
+
 
 class PistolBullet(Projectile):
 
-    def __init__(self, position, direction):
+    def __init__(self, position, direction, frame):
+        self.frame = frame
         super().__init__(position, direction)
         if self.velocity.magnitude() == 0:
             self.velocity = Pose((1, 0))
@@ -53,6 +60,7 @@ class PistolBullet(Projectile):
         angle = self.velocity.get_angle_of_position()*180/math.pi
         self.sprite.set_angle(angle)
         self.radius = 25
+        self.damage = 60
 
     def draw(self, surface, offset=(0, 0)):
         x = self.position.x
@@ -67,6 +75,12 @@ class PistolBullet(Projectile):
             self.destroyed = True
         if self.position.y < -2000 or self.position.y > c.WINDOW_HEIGHT + 2000:
             self.destroyed = True
+
+    def hit(self, enemy):
+        super().hit(enemy)
+        for i in range(12):
+            self.frame.particles.append(SparkParticle(self.position.get_position(), velocity=(self.velocity * -1).get_position(), duration=0.25, color=(255, 255, 255), scale=30))
+        enemy.velocity += (self.velocity - enemy.velocity) * 0.1
 
 class Bread(Projectile):
     def __init__(self, position, direction, frame):
@@ -92,6 +106,8 @@ class Bread(Projectile):
         self.z = 0
         self.radius = 25
         self.landed = False
+        self.bounced = False
+        self.damage = 0
 
     def update(self, dt, events):
         super().update(dt, events)
@@ -108,11 +124,22 @@ class Bread(Projectile):
                 for i in range(7):
                     self.frame.particles.append(Puff((self.position + Pose((0, -20))).get_position()))
                 self.landed = True
+                random.choice(self.frame.player.breads).play()
             self.spin_speed = 0
             self.angle = -30
 
             if self.age > 20:
                 self.destroyed = True
+
+
+    def bounce(self):
+        if self.bounced:
+            return
+        self.bounced = True
+        self.velocity *= -0.8
+        self.zvel = -200
+        random.choice(self.frame.player.breads).play()
+
 
 
     def draw(self, surface, offset=(0, 0)):
@@ -123,9 +150,13 @@ class Bread(Projectile):
                 return
             img = pygame.transform.scale(img, (int(img.get_width() * scale), int(img.get_height() * scale)))
 
+
         x = self.position.x - img.get_width()//2 - offset[0]
         y = self.position.y + self.z - img.get_height()//2 - offset[1]
         surface.blit(img, (x, y))
+
+    def hit(self, enemy):
+        self.bounce()
 
 class Shuriken(Projectile):
 
@@ -148,6 +179,8 @@ class Shuriken(Projectile):
         self.angle = angle
         self.spin_speed = 1000
         self.alpha = 255
+        self.slowdown = 0.0
+        self.damage = 30
 
     def draw(self, surface, offset=(0, 0)):
         x = self.position.x
@@ -160,10 +193,15 @@ class Shuriken(Projectile):
         super().update(dt, events)
         self.sprite.update(dt, events)
         self.angle += self.spin_speed*dt
-        if self.age > 2:
+        if self.age > 3:
             self.spin_speed *= 0.001**dt
             self.alpha -= 500*dt
         self.sprite.set_angle(self.angle)
         self.sprite.image.set_alpha(self.alpha)
         if self.alpha < 0:
             self.destroyed = True
+
+    def hit(self, enemy):
+        super().hit(enemy)
+        for i in range(12):
+            self.frame.particles.append(SparkParticle(self.position.get_position(), duration=0.25, color=(128, 135, 160), scale=20))

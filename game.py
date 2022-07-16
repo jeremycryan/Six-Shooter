@@ -15,6 +15,8 @@ class Game:
         else:
             self.screen = pygame.display.set_mode(c.WINDOW_SIZE)
         self.clock = pygame.time.Clock()
+        self.reticle = pygame.image.load("assets/images/reticle.png")
+        pygame.mouse.set_visible(False)
         Camera.init()
         SoundManager.init()
 
@@ -29,11 +31,16 @@ class Game:
                 dt = 0.05
             current_frame.update(dt, events)
             current_frame.draw(self.screen, (0, 0))
+            self.draw_reticle(self.screen)
             pygame.display.flip()
 
             if current_frame.done:
                 current_frame = current_frame.next_frame()
                 current_frame.load()
+
+    def draw_reticle(self, surface, offset=(0, 0)):
+        x, y = pygame.mouse.get_pos()
+        surface.blit(self.reticle, (x - self.reticle.get_width(), y - self.reticle.get_height()))
 
     def get_events(self):
         dt = self.clock.tick(c.FRAMERATE)/1000
