@@ -20,23 +20,23 @@ class Particle:
         if self.destroyed:
             return
         self.position += self.velocity * dt
-        self.age += dt
         if self.age > self.duration:
             self.destroy()
+        self.age += dt
 
     def draw(self, surf, offset=(0, 0)):
         if self.destroyed:
             return
 
     def through(self):
-        return self.age/self.duration
+        return min(0.999, self.age/self.duration)
 
     def destroy(self):
         self.destroyed = True
 
 
 class Puff(Particle):
-    surf = None
+    surfs = []
     def __init__(self, position=(0, 0), velocity=None):
         angle = random.random() * math.pi * 2
         if not velocity:
@@ -47,10 +47,16 @@ class Puff(Particle):
         super().__init__((position[0], position[1] + 30), duration=0.5, velocity=velocity)
         self.position += self.velocity*(1/self.velocity.magnitude()) * 30
         self.age += random.random() * self.duration * 0.5
-        if not Puff.surf:
-            Puff.surf = pygame.image.load("assets/images/puff.png")
-        self.surf = pygame.transform.rotate(Puff.surf, angle*180/math.pi)
-        self.surf.set_colorkey((255, 0, 255))
+        if not Puff.surfs:
+            Puff.surfs = []
+            sheet = pygame.image.load("assets/images/puff.png")
+            width = sheet.get_width()//3
+            for i in range(3):
+                new_surf = pygame.Surface((width, sheet.get_height()))
+                new_surf.blit(sheet, (i*-width, 0))
+                new_surf.set_colorkey((255, 0, 255))
+                Puff.surfs.append(new_surf)
+        self.surf = random.choice(Puff.surfs)
 
     def update(self, dt, events):
         super().update(dt, events)
@@ -72,11 +78,11 @@ class Puff(Particle):
 class MuzzleFlash(Particle):
     surf = None
 
-    def __init__(self, position, angle):
+    def __init__(self, position, angle, duration=0.08):
         if not MuzzleFlash.surf:
             MuzzleFlash.surf = pygame.image.load("assets/images/muzzle_flash.png")
 
-        super().__init__(position, duration=0.08)
+        super().__init__(position, duration=duration)
         self.surf = pygame.transform.rotate(MuzzleFlash.surf, angle)
         self.surf.set_colorkey((255, 0, 255))
         self.layer = c.FOREGROUND
@@ -95,9 +101,10 @@ class MuzzleFlash(Particle):
 
 class SparkParticle(Particle):
 
-    def __init__(self, position, velocity=None, duration=0.3, color=(255, 255, 255)):
+    def __init__(self, position, velocity=None, duration=0.5, color=(255, 0, 0), scale=40, velocity_scale=1.0):
         self.color = color
-        velocity_mag = random.random()**2 * 700 + 300
+        self.scale = scale
+        velocity_mag = (random.random()**2 * 1600 + 800) * velocity_scale
         if not velocity:
             velocity_angle = random.random() * 2 * math.pi
         else:
@@ -107,19 +114,21 @@ class SparkParticle(Particle):
         velocity = velocity_x, velocity_y
         super().__init__(position=position, velocity=velocity, duration=duration)
         self.age += random.random() * 0.3
+        self.layer = c.FOREGROUND
 
     def update(self, dt, events):
         super().update(dt, events)
         self.velocity *= 0.005**dt
 
+
     def draw(self, surf, offset=(0, 0)):
         if self.destroyed:
             return
-        corners = [[3, 0], [0, -0.5], [-1, 0], [0, 0.5]]
+        corners = [[3, 0], [0, -0.25], [-2, 0], [0, 0.25]]
 
         angle = math.atan2(self.velocity.y, self.velocity.x)
 
-        scale = 15 * (1 - self.through())
+        scale = self.scale * (1 - self.through())
         for corner in corners:
             original_angle = math.atan2(corner[1], corner[0])
             new_angle = angle - original_angle
@@ -127,9 +136,9 @@ class SparkParticle(Particle):
             mag *= scale
             corner[0] = math.cos(new_angle) * mag
             corner[1] = math.sin(new_angle) * mag
-            corner[0] += self.position.x
-            corner[1] += self.position.y
+            corner[0] += self.position.x - offset[0]
+            corner[1] += self.position.y - offset[1]
 
-        pygame.draw.polygon(surf, self.color, corners)
-
+        color = tuple([self.color[i] * self.through() + 255 * (1 - self.through()) for i in range(3)])
+        pygame.draw.polygon(surf, color, corners)
 

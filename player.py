@@ -4,7 +4,7 @@ import pygame
 import constants as c
 import math
 from camera import Camera
-from particle import Puff,MuzzleFlash
+from particle import Puff,MuzzleFlash,SparkParticle
 from projectile import PistolBullet, Bread, Shuriken
 import random
 from sound_manager import SoundManager
@@ -99,13 +99,16 @@ class Player:
         self.process_inputs(dt, events)
         self.sprite.set_position(self.position.get_position())
         was_firing = self.firing
+        was_rolling = self.rolling
         self.sprite.update(dt, events)
         self.hand_sprite.update(dt, events)
+        self.update_hand(dt, events)
         if not self.firing and was_firing:
+            self.hand_sprite.update(0, events)
+        elif not self.rolling and was_rolling:
             self.hand_sprite.update(0, events)
         mpos = Camera.screen_to_world(pygame.mouse.get_pos())
         Camera.target = self.position.copy() * 0.7 + mpos * 0.3
-        self.update_hand(dt, events)
         if self.animation_state == c.WALKING:
             self.since_kick += dt
         if self.since_kick > 1/6 and self.velocity.magnitude() > 0:
@@ -136,6 +139,9 @@ class Player:
             direction += Pose((-1, 0))
         if pressed[pygame.K_d]:
             direction += Pose((1, 0))
+
+        if self.firing and self.weapon_mode == c.FIRE:
+            direction = Pose((0, 0))
 
         old_state = self.animation_state
 
@@ -192,6 +198,7 @@ class Player:
         self.position += self.velocity * dt
 
     def roll(self, direction):
+        self.last_fire = 999
         self.rolling = True
         self.animation_state = c.ROLLING
         animation = "Rolling"
@@ -213,7 +220,7 @@ class Player:
         if not len(modes_to_roll):
             modes_to_roll = c.VALID_MODES
         self.weapon_mode = random.choice(modes_to_roll)
-        self.hand_sprite.update(0, [])
+        self.frame.shake(self.velocity,15)
 
     def draw(self, surface, offset=(0, 0)):
         self.draw_hand(surface, offset, up=True)
@@ -246,6 +253,29 @@ class Player:
             frame_count=3,
 
             start_frame=1,
+        )
+        gatling_idle_right = Animation.from_path(
+            "assets/images/gatling_arm.png",
+            sheet_size=(2, 1),
+            frame_count=1,
+        )
+        gatling_idle_left = Animation.from_path(
+            "assets/images/gatling_arm.png",
+            sheet_size=(2, 1),
+            frame_count=1,
+            reverse_x=True,
+        )
+        gatling_fire_left = Animation.from_path(
+            "assets/images/gatling_arm.png",
+            sheet_size=(2, 1),
+            frame_count=2,
+            reverse_x=True,
+
+        )
+        gatling_fire_right = Animation.from_path(
+            "assets/images/gatling_arm.png",
+            sheet_size=(2,1),
+            frame_count=2,
         )
         bread_fire_right = Animation.from_path(
             "assets/images/bread_arm.png",
@@ -298,14 +328,43 @@ class Player:
             frame_count=1,
             reverse_x=True,
         )
+        fire_idle_right = Animation.from_path(
+            "assets/images/fire_arm.png",
+            sheet_size=(14, 1),
+            frame_count=2,
+        )
+        fire_idle_left = Animation.from_path(
+            "assets/images/fire_arm.png",
+            sheet_size=(14, 1),
+            frame_count=2,
+            reverse_x=True,
+        )
+        fire_fire_right = Animation.from_path(
+            "assets/images/fire_arm.png",
+            sheet_size=(14, 1),
+            frame_count=10,
+            start_frame=0,
+        )
+        fire_fire_left = Animation.from_path(
+            "assets/images/fire_arm.png",
+            sheet_size=(14, 1),
+            frame_count=10,
+            reverse_x=True,
+
+            start_frame=0,
+        )
         hand_sprite.add_animation(
             {
-                 "GunIdleLeft": gun_idle_left,
-                 "GunIdleRight": gun_idle_right,
-                 "BreadIdleRight": bread_idle_right,
-                 "BreadIdleLeft": bread_idle_left,
-                 "ShurikenIdleRight": shuriken_idle_right,
-                 "ShurikenIdleLeft": shuriken_idle_left,
+                "GunIdleLeft": gun_idle_left,
+                "GunIdleRight": gun_idle_right,
+                "BreadIdleRight": bread_idle_right,
+                "BreadIdleLeft": bread_idle_left,
+                "ShurikenIdleRight": shuriken_idle_right,
+                "ShurikenIdleLeft": shuriken_idle_left,
+                "FireIdleLeft": fire_idle_left,
+                "FireIdleRight": fire_idle_right,
+                "GatlingIdleRight": gatling_idle_right,
+                "GatlingIdleLeft": gatling_idle_left,
              },
             loop=True
         )
@@ -317,8 +376,18 @@ class Player:
                 "BreadFireLeft": bread_fire_left,
                 "ShurikenFireRight": shuriken_fire_right,
                 "ShurikenFireLeft": shuriken_fire_left,
+                "FireFireRight": fire_fire_right,
+                "FireFireLeft": fire_fire_left
             },
             loop=False
+        )
+        hand_sprite.add_animation(
+            {
+                "GatlingFireRight": gatling_fire_right,
+                "GatlingFireLeft": gatling_fire_left,
+            },
+            fps_override=24,
+            loop=True
         )
         hand_sprite.add_callback("GunFireRight",self.finish_firing)
         hand_sprite.add_callback("GunFireLeft", self.finish_firing)
@@ -326,7 +395,21 @@ class Player:
         hand_sprite.add_callback("BreadFireLeft", self.finish_firing)
         hand_sprite.add_callback("ShurikenFireRight",self.finish_firing)
         hand_sprite.add_callback("ShurikenFireLeft", self.finish_firing)
+        hand_sprite.add_callback("FireFireRight", self.finish_firing)
+        hand_sprite.add_callback("FireFireLeft", self.finish_firing)
+        hand_sprite.add_callback("GatlingFireRight", self.finish_firing)
+        hand_sprite.add_callback("GatlingFireLeft", self.finish_firing)
         hand_sprite.start_animation("GunIdleRight")
+
+        self.fire_sprite = Sprite(12)
+        fire = Animation.from_path("assets/images/flame.png",sheet_size=(14, 1),frame_count=4)
+        fire_vanish = Animation.from_path("assets/images/flame.png", sheet_size=(14, 1), frame_count=14, start_frame=2)
+        self.fire_sprite.add_animation({
+            "Idle": fire,
+            "Vanish": fire_vanish,
+        }, loop=False)
+        self.fire_sprite.chain_animation("Idle", "Idle")
+        self.fire_sprite.start_animation("Idle", restart_if_active=True)
 
     def update_hand(self, dt, events):
         mpos = pygame.mouse.get_pos()
@@ -365,6 +448,12 @@ class Player:
         if self.aim_knockback < 0:
             self.aim_knockback = 0
 
+        if self.weapon_mode == c.FIRE:
+            self.fire_sprite.update(dt, events)
+
+        if self.weapon_mode == c.GATLING and not self.rolling:
+            if self.velocity.magnitude() > 200:
+                self.velocity.scale_to(200)
 
     def fire(self):
         if self.last_fire < c.COOLDOWNS[self.weapon_mode]:
@@ -391,6 +480,9 @@ class Player:
             self.frame.projectiles.append(PistolBullet(offset.get_position(), relative.get_position()))
             knockback = relative * -1
             knockback.scale_to(500)
+            self.frame.shake(direction=relative, amt=15)
+            for i in range(8):
+                self.frame.particles.append(SparkParticle(position=(self.hand_sprite.x, self.hand_sprite.y), velocity=relative.get_position(), duration=0.4, scale=20, color=(255, 180, 0)))
         elif self.weapon_mode == c.BREAD:
             self.knockback_velocity = 0
             if relative.x < 0:
@@ -398,6 +490,34 @@ class Player:
             else:
                 self.hand_sprite.start_animation("BreadFireRight")
             self.frame.projectiles.append(Bread(offset.get_position(), relative.get_position(), self.frame))
+        elif self.weapon_mode == c.GATLING:
+            self.knockback_velocity = 600
+            if relative.x < 0:
+                self.hand_sprite.start_animation("GatlingFireLeft")
+            else:
+                self.hand_sprite.start_animation("GatlingFireRight")
+            if self.velocity.magnitude() > 200:
+                self.velocity.scale_to(200)
+            muzzle_offset = self.position + Pose((math.cos(self.arm_angle*math.pi/180), -math.sin(self.arm_angle*math.pi/180))) * (self.aim_distance + 155) + Pose((0, 25))
+            particle_offset = self.position + Pose(
+                (math.cos(self.arm_angle * math.pi / 180), -math.sin(self.arm_angle * math.pi / 180))) * (
+                                        self.aim_distance + 125) + Pose((0, 25))
+            spark_offset = self.position + Pose(
+                (math.cos(self.arm_angle * math.pi / 180), -math.sin(self.arm_angle * math.pi / 180))) * (
+                                        self.aim_distance + 5) + Pose((0, 25))
+            self.frame.particles.append(MuzzleFlash(muzzle_offset.get_position(), self.arm_angle, duration=0.03))
+            self.frame.projectiles.append(PistolBullet(particle_offset.get_position(), relative.get_position()))
+            knockback = relative * -1
+            knockback.scale_to(350)
+            self.frame.shake(direction=relative, amt=10)
+            for i in range(5):
+                pass
+                self.frame.particles.append(
+                    SparkParticle(position=(particle_offset ).get_position(), velocity=relative.get_position(),
+                                  duration=0.3, scale=25, color=(255, 180, 0)))
+                self.frame.particles.append(
+                    SparkParticle(position=(spark_offset).get_position(), velocity=relative.get_position(),
+                                  duration=0.15, velocity_scale=0.6, scale=20, color=(255, 180, 0)))
         elif self.weapon_mode == c.SHURIKEN:
             self.knockback_velocity = 1500
             if relative.x < 0:
@@ -411,6 +531,13 @@ class Player:
                 self.frame.projectiles.append(Shuriken(offset.get_position(), new_relative.get_position(), self.frame))
             knockback = relative * -1
             knockback.scale_to(500)
+        elif self.weapon_mode == c.FIRE:
+            self.knockback_velocity = 0
+            if relative.x < 0:
+                self.hand_sprite.start_animation("FireFireLeft")
+            else:
+                self.hand_sprite.start_animation("FireFireRight")
+            self.fire_sprite.start_animation("Vanish")
 
         self.velocity += knockback
 
@@ -435,6 +562,11 @@ class Player:
                 self.hand_sprite.start_animation("GunIdleLeft", restart_if_active=False)
             else:
                 self.hand_sprite.start_animation("GunIdleRight", restart_if_active=False)
+        if self.weapon_mode == c.GATLING and not self.firing:
+            if relative.x < 0:
+                self.hand_sprite.start_animation("GatlingIdleLeft", restart_if_active=False)
+            else:
+                self.hand_sprite.start_animation("GatlingIdleRight", restart_if_active=False)
         if self.weapon_mode == c.BREAD and not self.firing:
             if relative.x < 0:
                 self.hand_sprite.start_animation("BreadIdleLeft", restart_if_active=False)
@@ -445,7 +577,22 @@ class Player:
                 self.hand_sprite.start_animation("ShurikenIdleLeft", restart_if_active=False)
             else:
                 self.hand_sprite.start_animation("ShurikenIdleRight", restart_if_active=False)
+        if self.weapon_mode == c.FIRE and not self.firing:
+            if relative.x < 0:
+                self.hand_sprite.start_animation("FireIdleLeft", restart_if_active=False)
+            else:
+                self.hand_sprite.start_animation("FireIdleRight", restart_if_active=False)
+            self.fire_sprite.start_animation("Idle", restart_if_active=False)
+
 
         self.hand_sprite.set_position((self.position + relative).get_position())
+        if self.weapon_mode == c.GATLING:
+            self.hand_sprite.y += 30
+
         self.hand_sprite.set_angle(sprite_angle)
+        self.hand_sprite.update_image()
         self.hand_sprite.draw(surface, offset)
+        if self.weapon_mode == c.FIRE and not (self.last_fire < c.COOLDOWNS[c.FIRE] and not self.firing):
+            pos = self.position + relative
+            self.fire_sprite.set_position(pos.get_position())
+            self.fire_sprite.draw(surface, offset)

@@ -2,8 +2,10 @@ from primitives import Pose
 import pygame
 import math
 import random
+import constants as c
 
 from pyracy.sprite_tools import Sprite, Animation
+from particle import Puff
 
 
 class Projectile:
@@ -29,6 +31,9 @@ class Projectile:
             cls.surf_cache[path] = pygame.image.load(path)
         return cls.surf_cache[path]
 
+    def on_impact(self):
+        pass
+
 
 class PistolBullet(Projectile):
 
@@ -41,7 +46,7 @@ class PistolBullet(Projectile):
         self.velocity = Pose((math.cos(angle), -math.sin(angle)))
         self.velocity.scale_to(4000)
         self.surf = self.load_surf("assets/images/bullet.png")
-        anim = Animation(self.surf, (4, 1), 4)
+        anim = Animation(self.surf, (3, 1), 3)
         self.sprite = Sprite(12, self.position.get_position())
         self.sprite.add_animation({"Bullet": anim}, loop=True)
         self.sprite.start_animation("Bullet")
@@ -58,6 +63,10 @@ class PistolBullet(Projectile):
     def update(self, dt, events):
         super().update(dt, events)
         self.sprite.update(dt, events)
+        if self.position.x < -2000 or self.position.x > c.WINDOW_WIDTH + 2000:
+            self.destroyed = True
+        if self.position.y < -2000 or self.position.y > c.WINDOW_HEIGHT + 2000:
+            self.destroyed = True
 
 class Bread(Projectile):
     def __init__(self, position, direction, frame):
@@ -82,6 +91,7 @@ class Bread(Projectile):
         self.zvel = -500
         self.z = 0
         self.radius = 25
+        self.landed = False
 
     def update(self, dt, events):
         super().update(dt, events)
@@ -93,19 +103,29 @@ class Bread(Projectile):
         self.z += self.zvel*dt
         if self.z > 0:
             self.z = 0
-            self.velocity = Pose((0, 0))
+            if self.velocity.magnitude() > 0:
+                self.velocity = Pose((0, 0))
+                for i in range(7):
+                    self.frame.particles.append(Puff((self.position + Pose((0, -20))).get_position()))
+                self.landed = True
             self.spin_speed = 0
             self.angle = -30
-            #self.destroyed = True
-            if self.age > 30:
+
+            if self.age > 20:
                 self.destroyed = True
 
 
     def draw(self, surface, offset=(0, 0)):
-        x = self.position.x
-        y = self.position.y + self.z
-        self.sprite.set_position((x, y))
-        self.sprite.draw(surface, offset)
+        img = self.sprite.get_image()
+        if self.age > 10:
+            scale = 1 - ((self.age -10) * 5)
+            if scale < 0:
+                return
+            img = pygame.transform.scale(img, (int(img.get_width() * scale), int(img.get_height() * scale)))
+
+        x = self.position.x - img.get_width()//2 - offset[0]
+        y = self.position.y + self.z - img.get_height()//2 - offset[1]
+        surface.blit(img, (x, y))
 
 class Shuriken(Projectile):
 
