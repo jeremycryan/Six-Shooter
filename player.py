@@ -8,19 +8,26 @@ from particle import Puff,MuzzleFlash,SparkParticle
 from projectile import PistolBullet, Bread, Shuriken
 import random
 from sound_manager import SoundManager
-from enemy import Grunt
+from enemy import Grunt, BossMan, Hand
 
 class Player:
 
     def __init__(self, frame):
 
         self.frame = frame
-        self.position = Pose(c.ARENA_SIZE) * 0.5 - Pose((0, 1000))
+        self.position = Pose(c.ARENA_SIZE) * 0.5
         Camera.position = self.position.copy() - Pose(c.WINDOW_SIZE)*0.5
         self.velocity = Pose((0, 0))
         self.sprite = Sprite(12, (0, 0))
         self.hand_sprite = Sprite(12, (0, 0))
         self.populate_hand_sprite(self.hand_sprite)
+
+        self.since_damage = 999
+        self.dead = False
+
+        self.health = 100
+        self.max_health = 100
+
         walk_right = Animation.from_path(
             "assets/images/walk_right.png",
             sheet_size=(8, 1),
@@ -61,6 +68,22 @@ class Player:
             sheet_size=(6, 1),
             frame_count=6,
         )
+        dead = Animation.from_path(
+            "assets/images/player_dead.png",
+            sheet_size=(1, 1),
+            frame_count=1,
+        )
+        take_damage_right = Animation.from_path(
+            "assets/images/player_take_damage.png",
+            sheet_size=(6, 1),
+            frame_count=3,
+        )
+        take_damage_left = Animation.from_path(
+            "assets/images/player_take_damage.png",
+            sheet_size=(6, 1),
+            frame_count=3,
+            reverse_x=True,
+        )
         self.sprite.add_animation(
             {
                 "WalkRight": walk_right,
@@ -72,15 +95,25 @@ class Player:
             },
             loop=True
         )
+        self.sprite.add_animation(
+            {
+                "Dead": dead,
+                "TakeDamageRight": take_damage_right,
+                "TakeDamageLeft": take_damage_left,
+            },
+            loop=False
+        )
 
         self.number_surfs = {
             mode: pygame.image.load(f"assets/images/{mode}.png") for mode in c.VALID_MODES
         }
 
-        self.since_roll_finish = 0
+        self.since_roll_finish = 99
 
         self.sprite.add_animation({"Rolling": rolling})
         self.sprite.add_callback("Rolling", self.stop_rolling)
+        self.sprite.add_callback("TakeDamageRight", self.stop_taking_damage)
+        self.sprite.add_callback("TakeDamageLeft", self.stop_taking_damage)
         self.sprite.start_animation("WalkRight")
 
         self.animation_state = c.IDLE
@@ -96,11 +129,15 @@ class Player:
         self.knockback_velocity = 0
         self.radius = 40
 
+        self.death_sound = SoundManager.load("assets/sounds/Player-Death.mp3")
+
         self.shadow = pygame.Surface((self.radius*2, self.radius*2))
         self.shadow.fill((255, 255, 0))
         self.shadow.set_colorkey((255, 255, 0))
         pygame.draw.circle(self.shadow, (0, 0, 0), (self.radius, self.radius), self.radius)
         self.shadow.set_alpha(60)
+
+        self.take_damage = SoundManager.load("assets/sounds/Taking-Damage.ogg")
 
         self.since_kick = 0
         self.roll_sound = SoundManager.load("assets/sounds/die_roll.mp3")
@@ -123,12 +160,59 @@ class Player:
         for shot in self.breads:
             shot.set_volume(0.2)
 
-        pygame.mixer.music.load("assets/sounds/Music-Intro.mp3")
-        pygame.mixer.music.play()
-        pygame.mixer.music.queue("assets/sounds/Music-Main-Loop.mp3", loops=-1)
-        pygame.mixer.music.set_volume(0.4)
+        self.stamina_sprite = Sprite(16)
+        stamina = Animation.from_path("assets/images/stam wheel.png", sheet_size=(16, 1), frame_count=15)
+        stamina_idle = Animation.from_path("assets/images/stam wheel.png", sheet_size=(16, 1), frame_count=1)
+        self.stamina_sprite.add_animation({"Stamina": stamina, "StaminaIdle": stamina_idle})
+        self.stamina_sprite.start_animation("StaminaIdle")
+        self.stamina_sprite.add_callback("Stamina", self.hide_stamina)
+
+        # pygame.mixer.music.load("assets/sounds/Music-Intro.mp3")
+        # pygame.mixer.music.play()
+
+        self.stamina_visible = False
+
+    def hide_stamina(self):
+        self.stamina_visible = False
+
+    def reset_stamina(self):
+        self.stamina_visible = True
+        self.stamina_sprite.start_animation("Stamina")
+
+
+    def stop_taking_damage(self):
+        self.animation_state = c.IDLE
+
+    def get_hurt(self, direction=None):
+        if self.since_damage < 1.25:
+            return
+        for enemy in self.frame.enemies[:]:
+            if not isinstance(enemy, BossMan) and not isinstance(enemy, Hand) and not enemy.lethal and not enemy.destroyed and not self.rolling:
+                enemy.lethal = True
+                enemy.destroy()
+        if direction:
+            if not direction.magnitude():
+                direction = Pose((1, 0))
+            direction.scale_to(1600)
+            self.velocity += direction
+        self.take_damage.play()
+        self.frame.damage_flash_alpha = 255
+        self.frame.shake(direction, amt=30)
+        self.since_damage = 0
+        self.health -= 40
+        self.animation_state = c.TAKING_DAMAGE
+        if self.last_lr_direction == c.RIGHT:
+            self.sprite.start_animation("TakeDamageRight")
+        else:
+            self.sprite.start_animation("TakeDamageLeft")
 
     def update(self, dt, events):
+        self.stamina_sprite.update(dt, events)
+        self.since_damage += dt
+        self.health += 2*dt
+        if self.health > self.max_health:
+            self.health = self.max_health
+
         if self.rolling:
             if self.since_roll_finish != 0:
                 self.since_roll_finish = 0
@@ -168,6 +252,30 @@ class Player:
         if self.position.y + self.radius > c.ARENA_HEIGHT:
             self.position.y = c.ARENA_HEIGHT - self.radius
 
+        hurt = False
+        for enemy in self.frame.enemies:
+            if self.rolling or self.dead:
+                continue
+            if not enemy.damaging or enemy.lethal or enemy.destroyed:
+                continue
+            if (enemy.position - self.position).magnitude() < enemy.radius + self.radius:
+                self.get_hurt(self.position - enemy.position)
+                hurt = True
+                break
+            if isinstance(enemy, BossMan):
+                if enemy.boss_mode == c.BOSS_FIRING_LASER and abs(enemy.position.x - self.position.x) < 40:
+                    self.get_hurt(Pose(((self.position - enemy.position).x, 0)))
+                    enemy.swoop_above_player()
+
+                    break
+        if self.health < 0:
+            if not self.dead:
+                self.die()
+
+    def die(self):
+        self.dead = True
+        self.death_sound.play()
+
     def process_inputs(self, dt, events):
         direction = Pose((0, 0))
         pressed = pygame.key.get_pressed()
@@ -180,7 +288,7 @@ class Player:
         if pressed[pygame.K_d]:
             direction += Pose((1, 0))
 
-        if self.firing and self.weapon_mode == c.FIRE:
+        if (self.firing and self.weapon_mode == c.FIRE) or self.dead:
             direction = Pose((0, 0))
 
         old_state = self.animation_state
@@ -188,21 +296,23 @@ class Player:
         for event in events:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE:
-                    if not self.rolling:
+                    if not self.rolling and not self.dead and not self.stamina_visible:
                         self.roll(direction)
+                if event.key == pygame.K_r and self.dead:
+                    self.frame.restart()
         mouse_pressed = pygame.mouse.get_pressed()
         if mouse_pressed[0]:
-            if not self.rolling and not self.firing:
+            if not self.rolling and not self.firing and not self.dead:
                 self.fire()
 
-        if self.rolling:
+        if self.rolling or self.animation_state == c.TAKING_DAMAGE:
             pass
         else:
             if direction.magnitude() > 0:
                 direction.scale_to(1)
                 self.velocity += direction * dt * 7500
                 self.animation_state = c.WALKING
-            else:
+            elif not self.frame.damage_flash_alpha > 0:
                 self.velocity *= 0.0001**dt
             if direction.magnitude() == 0:
                 self.animation_state = c.IDLE
@@ -227,12 +337,19 @@ class Player:
                 else:
                     self.sprite.start_animation("WalkBackLeft", restart_if_active=False, clear_time=clear_time)
         elif self.animation_state == c.IDLE:
-            if self.last_lr_direction == c.RIGHT:
+            if self.dead:
+                self.sprite.start_animation("Dead", restart_if_active=False)
+            elif self.last_lr_direction == c.RIGHT:
                 self.sprite.start_animation("IdleRight", restart_if_active=False, clear_time=False)
             else:
                 self.sprite.start_animation("IdleLeft", restart_if_active=False, clear_time=False)
+        elif self.animation_state == c.TAKING_DAMAGE:
+            if self.last_lr_direction == c.RIGHT:
+                self.sprite.start_animation("TakeDamageRight", restart_if_active=False)
+            else:
+                self.sprite.start_animation("TakeDamageLeft", restart_if_active=False)
 
-        if self.velocity.magnitude() > 550 and not self.rolling:
+        if self.velocity.magnitude() > 550 and not self.rolling and not self.frame.damage_flash_alpha > 0:
             self.velocity.scale_to(550)
 
         self.position += self.velocity * dt
@@ -250,10 +367,11 @@ class Player:
         self.firing = False
         self.roll_sound.play()
 
-        self.frame.enemies.append(Grunt((1000, 1000), self.frame))
 
     def stop_rolling(self):
         self.rolling = False
+
+        self.reset_stamina()
         self.animation_state = c.IDLE
         self.sprite.start_animation("IdleRight")
         for i in range(20):
@@ -292,30 +410,35 @@ class Player:
         self.sprite.draw(surface, offset)
         self.draw_hand(surface, offset, up=False)
 
+        if self.stamina_visible:
+            stamina_offset = Pose((-50, -40))
+            self.stamina_sprite.set_position((self.position + stamina_offset).get_position())
+            self.stamina_sprite.draw(surface, offset)
+
     def populate_hand_sprite(self, hand_sprite):
         gun_idle_right = Animation.from_path(
             "assets/images/gun.png",
-            sheet_size=(3, 1),
+            sheet_size=(4, 1),
             frame_count=1,
         )
         gun_idle_left = Animation.from_path(
             "assets/images/gun.png",
-            sheet_size=(3, 1),
+            sheet_size=(4, 1),
             frame_count=1,
             reverse_x=True,
         )
         gun_fire_left = Animation.from_path(
             "assets/images/gun.png",
-            sheet_size=(3, 1),
-            frame_count=3,
+            sheet_size=(4, 1),
+            frame_count=4,
             reverse_x=True,
 
             start_frame=1,
         )
         gun_fire_right = Animation.from_path(
             "assets/images/gun.png",
-            sheet_size=(3,1),
-            frame_count=3,
+            sheet_size=(4,1),
+            frame_count=4,
 
             start_frame=1,
         )
@@ -344,14 +467,14 @@ class Player:
         )
         bread_fire_right = Animation.from_path(
             "assets/images/bread_arm.png",
-            sheet_size=(7, 1),
+            sheet_size=(4, 1),
             frame_count=4,
 
             start_frame=1,
         )
         bread_fire_left = Animation.from_path(
             "assets/images/bread_arm.png",
-            sheet_size=(7, 1),
+            sheet_size=(4, 1),
             frame_count=4,
             reverse_x=True,
 
@@ -359,12 +482,12 @@ class Player:
         )
         bread_idle_right = Animation.from_path(
             "assets/images/bread_arm.png",
-            sheet_size=(7, 1),
+            sheet_size=(4, 1),
             frame_count=1,
         )
         bread_idle_left = Animation.from_path(
             "assets/images/bread_arm.png",
-            sheet_size=(7, 1),
+            sheet_size=(4, 1),
             frame_count=1,
             reverse_x=True,
         )
@@ -557,7 +680,7 @@ class Player:
                 self.hand_sprite.start_animation("BreadFireRight")
             self.frame.projectiles.append(Bread(offset.get_position(), relative.get_position(), self.frame))
         elif self.weapon_mode == c.GATLING:
-            self.knockback_velocity = 600
+            self.knockback_velocity = 200
             if relative.x < 0:
                 self.hand_sprite.start_animation("GatlingFireLeft")
             else:
@@ -571,8 +694,11 @@ class Player:
             spark_offset = self.position + Pose(
                 (math.cos(self.arm_angle * math.pi / 180), -math.sin(self.arm_angle * math.pi / 180))) * (
                                         self.aim_distance + 5) + Pose((0, 25))
+            bullet_offset = self.position + Pose(
+                (math.cos(self.arm_angle * math.pi / 180), -math.sin(self.arm_angle * math.pi / 180))) * (
+                                        self.aim_distance + 125) + Pose((0, 25)) *0.5
             self.frame.particles.append(MuzzleFlash(muzzle_offset.get_position(), self.arm_angle, duration=0.03))
-            bullet = PistolBullet(particle_offset.get_position(), relative.get_position(), self.frame)
+            bullet = PistolBullet(bullet_offset.get_position(), relative.get_position(), self.frame)
             random.choice(self.shots).play()
             bullet.damage = 40
             self.frame.projectiles.append(bullet)
@@ -615,7 +741,7 @@ class Player:
         self.firing = False
 
     def draw_hand(self, surface, offset=(0, 0), up=False):
-        if self.rolling:
+        if self.rolling or self.dead:
             return
         dist = self.aim_distance - self.aim_knockback
         relative = Pose((math.cos(self.arm_angle*math.pi/180), -math.sin(self.arm_angle * math.pi/180))) * dist

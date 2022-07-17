@@ -1,6 +1,6 @@
 import constants as c
 import pygame
-from frame import Frame, GameFrame
+from frame import Frame, GameFrame, Instructions
 import sys
 from camera import Camera
 from sound_manager import SoundManager
@@ -19,9 +19,14 @@ class Game:
         pygame.mouse.set_visible(False)
         Camera.init()
         SoundManager.init()
+        self.main_music_started = False
+        self.intro_music = pygame.mixer.Sound("assets/sounds/Music-Intro.mp3")
+        self.intro_music.set_volume(0.4)
+        self.intro_music.play(-1)
+        self.tutorial = False
 
     def main(self):
-        current_frame = GameFrame()
+        current_frame = Instructions(self)
         current_frame.load()
         self.clock.tick(60)
 
@@ -52,7 +57,6 @@ class Game:
                 pygame.quit()
                 sys.exit()
 
-        Camera.update(dt, events)
 
         return dt, events
 
