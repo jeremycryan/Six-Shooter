@@ -116,7 +116,7 @@ class GameFrame(Frame):
 
         if not self.game.tutorial:
             self.age += dt
-        if self.age > 13 and not self.boss in self.enemies and not self.boss_dead:
+        if self.age > 11 and not self.boss in self.enemies and not self.boss_dead:
             self.enemies.append(self.boss)
             self.healthbar.visible = True
             if not self.game.main_music_started:

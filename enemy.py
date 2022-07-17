@@ -6,6 +6,7 @@ import pygame
 from camera import Camera
 import random
 from sound_manager import SoundManager
+from particle import Puff
 
 class Enemy:
 
@@ -22,6 +23,9 @@ class Enemy:
         self.fixed = False
         self.damaging = True
 
+        self.damage_bread_sound = SoundManager.load("assets/sounds/Bread-Hits-Object.mp3")
+        self.damage_bread_sound.set_volume(0.25)
+
         self.health_recently_lost = 0
         self.since_take_damage = 0
 
@@ -31,6 +35,8 @@ class Enemy:
         self.shadow.set_colorkey((255, 255, 0))
         pygame.draw.ellipse(self.shadow, (0, 0, 0), self.shadow.get_rect())
         self.shadow.set_alpha(60)
+        self.damage_sound = SoundManager.load("assets/sounds/Enemy-Damage.mp3")
+        self.damage_sound.set_volume(0.5)
 
         self.raised = False
 
@@ -51,6 +57,8 @@ class Enemy:
         self.health -= amount
         self.health_recently_lost += amount
         self.since_take_damage = 0
+        if amount > 0:
+            self.damage_bread_sound.play()
 
     def draw(self, surface, offset=(0, 0)):
         if not self.lethal:
@@ -98,19 +106,19 @@ class Grunt(Enemy):
                                          frame_count=5,
                                          reverse_x=False)
         die_right = Animation.from_path("assets/images/bug_dying.png",
-                                        sheet_size=(3, 1),
-                                        frame_count=3,
+                                        sheet_size=(4, 1),
+                                        frame_count=4,
                                         reverse_x = False)
         die_left = Animation.from_path("assets/images/bug_dying.png",
-                                        sheet_size=(3, 1),
-                                        frame_count=3,
+                                        sheet_size=(4, 1),
+                                        frame_count=4,
                                         reverse_x = True)
-        damage_left = Animation.from_path("assets/images/bug_damage.png",
-                                        sheet_size=(2, 1),
+        damage_left = Animation.from_path("assets/images/bug_dying.png",
+                                        sheet_size=(4, 1),
                                         frame_count=2,
                                         reverse_x = False)
-        damage_right = Animation.from_path("assets/images/bug_damage.png",
-                                        sheet_size=(2, 1),
+        damage_right = Animation.from_path("assets/images/bug_dying.png",
+                                        sheet_size=(4, 1),
                                         frame_count=2,
                                         reverse_x = True)
         self.sprite = Sprite(12)
@@ -185,6 +193,7 @@ class Grunt(Enemy):
             self.sprite.start_animation("DieRight")
         else:
             self.sprite.start_animation("DieLeft")
+        self.damage_sound.play()
 
     def take_damage(self, amount):
         super().take_damage(amount)
@@ -244,9 +253,12 @@ class BossMan(Enemy):
 
         #self.prepare_laser_attack()
 
+        self.buzz_sound =  SoundManager.load("assets/sounds/Wing-Buzz.mp3")
+        self.buzz_sound.set_volume(0.4)
+
         self.since_last_attack_finish = 0
         self.since_laser_noise = 999
-        self.swoop_above_player()
+        self.swoop_above_player(False)
         self.since_spawn = 0
         self.enemy_wave_ct = 0
 
@@ -301,7 +313,7 @@ class BossMan(Enemy):
             hand.sprite.start_animation("Idle", restart_if_active=False)
 
 
-    def swoop_above_player(self):
+    def swoop_above_player(self, play_sound=True):
         self.boss_mode = c.BOSS_SWOOPING
         self.set_damaging(False)
 
@@ -309,6 +321,9 @@ class BossMan(Enemy):
 
         for hand in self.hands:
             hand.sprite.start_animation("Idle")
+
+        if play_sound:
+            self.buzz_sound.play()
 
     def update(self, dt, events):
         super().update(dt, events)
@@ -474,6 +489,9 @@ class Hand(Enemy):
         self.damaging = True
         self.raised = False
         self.frame.shake(amt=30)
+        for i in range(20):
+            self.frame.particles.append(Puff(self.position.get_position()))
+
 
     def shadow_offset(self):
         if not self.z:

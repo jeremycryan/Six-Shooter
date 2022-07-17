@@ -516,6 +516,31 @@ class Player:
             frame_count=1,
             reverse_x=True,
         )
+        knife_fire_right = Animation.from_path(
+            "assets/images/knife arm final.png",
+            sheet_size=(6, 1),
+            frame_count=6,
+            start_frame=1,
+        )
+        knife_fire_left = Animation.from_path(
+            "assets/images/knife arm final.png",
+            sheet_size=(6, 1),
+            frame_count=6,
+            reverse_x=True,
+
+            start_frame=1,
+        )
+        knife_idle_right = Animation.from_path(
+            "assets/images/knife arm final.png",
+            sheet_size=(6, 1),
+            frame_count=1,
+        )
+        knife_idle_left = Animation.from_path(
+            "assets/images/knife arm final.png",
+            sheet_size=(6, 1),
+            frame_count=1,
+            reverse_x=True,
+        )
         fire_idle_right = Animation.from_path(
             "assets/images/fire_arm.png",
             sheet_size=(14, 1),
@@ -553,6 +578,8 @@ class Player:
                 "FireIdleRight": fire_idle_right,
                 "GatlingIdleRight": gatling_idle_right,
                 "GatlingIdleLeft": gatling_idle_left,
+                "KnifeIdleLeft": knife_idle_left,
+                "KnifeIdleRight": knife_idle_right,
              },
             loop=True
         )
@@ -565,7 +592,7 @@ class Player:
                 "ShurikenFireRight": shuriken_fire_right,
                 "ShurikenFireLeft": shuriken_fire_left,
                 "FireFireRight": fire_fire_right,
-                "FireFireLeft": fire_fire_left
+                "FireFireLeft": fire_fire_left,
             },
             loop=False
         )
@@ -577,6 +604,10 @@ class Player:
             fps_override=24,
             loop=True
         )
+        hand_sprite.add_animation({"KnifeFireRight": knife_fire_right,
+                "KnifeFireLeft": knife_fire_left},
+                                  loop=False,
+                                  fps_override=24)
         hand_sprite.add_callback("GunFireRight",self.finish_firing)
         hand_sprite.add_callback("GunFireLeft", self.finish_firing)
         hand_sprite.add_callback("BreadFireRight",self.finish_firing)
@@ -587,6 +618,8 @@ class Player:
         hand_sprite.add_callback("FireFireLeft", self.finish_firing)
         hand_sprite.add_callback("GatlingFireRight", self.finish_firing)
         hand_sprite.add_callback("GatlingFireLeft", self.finish_firing)
+        hand_sprite.add_callback("KnifeFireLeft", self.finish_firing)
+        hand_sprite.add_callback("KnifeFireRight", self.finish_firing)
         hand_sprite.start_animation("GunIdleRight")
 
         self.fire_sprite = Sprite(12)
@@ -598,6 +631,9 @@ class Player:
         }, loop=False)
         self.fire_sprite.chain_animation("Idle", "Idle")
         self.fire_sprite.start_animation("Idle", restart_if_active=True)
+
+        self.knife_sound = SoundManager.load("assets/sounds/Knife-2.mp3")
+        self.knife_sound.set_volume(0.3)
 
     def update_hand(self, dt, events):
         mpos = pygame.mouse.get_pos()
@@ -679,6 +715,7 @@ class Player:
             else:
                 self.hand_sprite.start_animation("BreadFireRight")
             self.frame.projectiles.append(Bread(offset.get_position(), relative.get_position(), self.frame))
+            random.choice(self.breads).play()
         elif self.weapon_mode == c.GATLING:
             self.knockback_velocity = 200
             if relative.x < 0:
@@ -734,6 +771,24 @@ class Player:
             else:
                 self.hand_sprite.start_animation("FireFireRight")
             self.fire_sprite.start_animation("Vanish")
+        elif self.weapon_mode == c.KNIFE:
+            self.knockback_velocity = 0
+            if relative.x < 0:
+                self.hand_sprite.start_animation("KnifeFireLeft")
+            else:
+                self.hand_sprite.start_animation("KnifeFireRight")
+            knife_position = relative.copy()
+            knife_position.scale_to(150)
+            knife_position += self.position
+            for enemy in self.frame.enemies:
+                dist = (enemy.position - knife_position).magnitude()
+                if dist < enemy.radius + 150:
+                    if not enemy.lethal and not enemy.destroyed and not enemy.raised:
+                        enemy.take_damage(130)
+                        for i in range(16):
+                            pos = enemy.position * 0.7 + self.position * 0.3
+                            self.frame.particles.append(SparkParticle(pos.get_position(), duration=0.2, color=(255, 255, 255), velocity_scale=1.5))
+            self.knife_sound.play()
 
         self.velocity += knockback
 
@@ -750,7 +805,7 @@ class Player:
             return
         if not up and relative.y <= 0:
             return
-        if relative.x < 0:
+        if (relative.x < 0 and "idle" in self.hand_sprite.active_animation_key.lower()) or ("fire" in self.hand_sprite.active_animation_key.lower() and "left" in self.hand_sprite.active_animation_key.lower()):
             sprite_angle += 180
             sprite_angle %= 360
         if self.weapon_mode == c.GUN and not self.firing:
@@ -779,6 +834,15 @@ class Player:
             else:
                 self.hand_sprite.start_animation("FireIdleRight", restart_if_active=False)
             self.fire_sprite.start_animation("Idle", restart_if_active=False)
+        if self.weapon_mode == c.KNIFE and not self.firing:
+            if relative.x < 0:
+                self.hand_sprite.start_animation("KnifeIdleLeft", restart_if_active=False)
+            else:
+                self.hand_sprite.start_animation("KnifeIdleRight", restart_if_active=False)
+        if self.weapon_mode == c.KNIFE:
+            relative *= 2
+        elif self.weapon_mode == c.GATLING:
+            relative *= 1.25
 
 
         self.hand_sprite.set_position((self.position + relative).get_position())

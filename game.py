@@ -24,9 +24,10 @@ class Game:
         self.intro_music.set_volume(0.4)
         self.intro_music.play(-1)
         self.tutorial = False
+        pygame.mixer.set_num_channels(32)
 
     def main(self):
-        current_frame = Instructions(self)
+        current_frame = GameFrame(self)
         current_frame.load()
         self.clock.tick(60)
 
