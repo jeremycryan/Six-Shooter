@@ -13,17 +13,21 @@ class Enemy:
         self.radius = 75
         self.sprite = None
         self.health = 100
+        self.max_health = 100
         self.position = Pose(position)
         self.velocity = Pose((0, 0))
         self.lethal = False
         self.destroyed = False
         self.fixed = False
 
+        self.health_recently_lost = 0
+        self.since_take_damage = 0
+
         visible_radius = self.shadow_radius()
-        self.shadow = pygame.Surface((visible_radius*2, visible_radius*2))
+        self.shadow = pygame.Surface((visible_radius*2, visible_radius*1.4))
         self.shadow.fill((255, 255, 0))
         self.shadow.set_colorkey((255, 255, 0))
-        pygame.draw.circle(self.shadow, (0, 0, 0), (visible_radius, visible_radius), visible_radius)
+        pygame.draw.ellipse(self.shadow, (0, 0, 0), self.shadow.get_rect())
         self.shadow.set_alpha(60)
 
     def shadow_radius(self):
@@ -39,6 +43,8 @@ class Enemy:
 
     def take_damage(self, amount):
         self.health -= amount
+        self.health_recently_lost += amount
+        self.since_take_damage = 0
 
     def draw(self, surface, offset=(0, 0)):
         if not self.lethal:
@@ -59,9 +65,16 @@ class Enemy:
         if self.health < 0 and not self.lethal:
             self.lethal = True
             self.destroy()
+        self.since_take_damage += dt
+        if self.since_take_damage > 1:
+            self.health_recently_lost -= 1000*dt
+            self.health_recently_lost *= 0.2**dt
+            if self.health_recently_lost < 0:
+                self.health_recently_lost = 0
 
     def destroy(self):
         self.destroyed = True
+        self.health_recently_lost = 0
 
 
 class Grunt(Enemy):
@@ -187,6 +200,7 @@ class BossMan(Enemy):
                       Hand((self.position + Pose((-200, 150))).get_position(), self.frame, right=False)]
         self.frame.enemies += self.hands
         self.health = 10000
+        self.max_health = 10000
         self.fixed = True
         self.boss_mode = c.BOSS_IDLE
 
@@ -287,6 +301,13 @@ class BossMan(Enemy):
     def shadow_offset(self):
         return 100
 
+    def take_damage(self, amount):
+        super().take_damage(amount)
+        min_hp = 100
+        if self.health < min_hp and self.hands[0].health > 0 or self.hands[1].health > 0:
+            self.health_recently_lost -= (min_hp - self.health)
+            self.health = min_hp
+
     def draw(self, surface, offset=(0, 0)):
         super().draw(surface, offset)
         self.beam_sprite.set_position((self.position + Pose((0, 100))).get_position())
@@ -313,6 +334,7 @@ class Hand(Enemy):
         })
         self.sprite.start_animation("Idle")
         self.health = 6000
+        self.max_health = self.health
         self.fixed = True
         self.offset = Pose((0, 0))
         self.age = 0

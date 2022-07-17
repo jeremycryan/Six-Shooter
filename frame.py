@@ -7,6 +7,7 @@ from primitives import Pose
 import math
 from particle import SparkParticle
 import random
+from healthbar import BossHealthBar
 
 from enemy import Grunt, BossMan
 
@@ -34,7 +35,9 @@ class GameFrame(Frame):
     def load(self):
         self.player = Player(self)
         self.enemies = [Grunt((1000, 1000), self)]
-        self.enemies.append(BossMan((c.WINDOW_WIDTH//2, 30), self))
+        boss = BossMan((c.WINDOW_WIDTH//2, 30), self)
+        self.healthbar = BossHealthBar(boss)
+        self.enemies.append(boss)
         self.particles = []
         self.projectiles = []
         self.background = Background()
@@ -92,7 +95,7 @@ class GameFrame(Frame):
                 pos_on_screen = Camera.world_to_screen(enemy.position.get_position())
                 if pos_on_screen.x > 0 and pos_on_screen.x < c.WINDOW_WIDTH:
                     if pos_on_screen.y > 0 and pos_on_screen.y < c.WINDOW_HEIGHT:
-                        enemy.take_damage(105)
+                        enemy.take_damage(250)
 
     def check_enemy_and_projectile_collisions(self):
         for enemy in self.enemies:
@@ -138,6 +141,8 @@ class GameFrame(Frame):
         for particle in self.particles:
             if particle.layer == c.FOREGROUND:
                 particle.draw(surface, offset=offset)
+
+        self.healthbar.draw(surface, offset)
 
         if self.red_flash_alpha > 0:
             self.red_flash.fill((self.red_flash_alpha, 0.25*self.red_flash_alpha, 0))

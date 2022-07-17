@@ -147,7 +147,7 @@ class Player:
         elif not self.rolling and was_rolling:
             self.hand_sprite.update(0, events)
         mpos = Camera.screen_to_world(pygame.mouse.get_pos())
-        Camera.target = self.position.copy() * 0.7 + mpos * 0.3
+        Camera.target = self.position.copy() * 0.8 + mpos * 0.2
         if self.animation_state == c.WALKING:
             self.since_kick += dt
         if self.since_kick > 1/3 and self.velocity.magnitude() > 0:
