@@ -27,7 +27,7 @@ class Game:
         pygame.mixer.set_num_channels(32)
 
     def main(self):
-        current_frame = GameFrame(self)
+        current_frame = Instructions(self)
         current_frame.load()
         self.clock.tick(60)
 
