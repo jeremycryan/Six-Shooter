@@ -69,9 +69,9 @@ class Player:
             frame_count=6,
         )
         dead = Animation.from_path(
-            "assets/images/player_dead.png",
-            sheet_size=(1, 1),
-            frame_count=1,
+            "assets/images/player death.png",
+            sheet_size=(10, 1),
+            frame_count=10,
         )
         take_damage_right = Animation.from_path(
             "assets/images/player_take_damage.png",

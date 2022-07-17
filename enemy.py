@@ -382,7 +382,6 @@ class BossMan(Enemy):
         if self.boss_mode == c.BOSS_PREPARING_LASER:
             self.sweep_position += (self.sweep_target - self.sweep_position) * 5 * dt
             self.position.x = Camera.screen_to_world((self.sweep_position, 0)).x
-        print(self.boss_mode)
         self.since_hand_attack += dt
         if self.boss_mode == c.BOSS_HAND_ATTACK and self.since_hand_attack > 6:
             self.swoop_above_player()

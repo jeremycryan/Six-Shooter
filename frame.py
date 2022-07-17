@@ -226,6 +226,8 @@ class GameFrame(Frame):
         screenshake = Pose((self.shake_amp.x * math.cos(self.since_shake * 35), self.shake_amp.y * math.cos(self.since_shake * 35)))
         offset = (offset + screenshake).get_position()
         self.background.draw(surface, offset)
+        if self.player.dead:
+            self.player.draw(surface, offset)
         for particle in self.particles:
             if particle.layer == c.BACKGROUND:
                 particle.draw(surface, offset=offset)
@@ -237,7 +239,8 @@ class GameFrame(Frame):
         for projectile in self.projectiles:
             if not hasattr(projectile, "landed") or not projectile.landed:
                 projectile.draw(surface, offset=offset)
-        self.player.draw(surface, offset=(offset))
+        if not self.player.dead:
+            self.player.draw(surface, offset=(offset))
         for particle in self.particles:
             if particle.layer == c.FOREGROUND:
                 particle.draw(surface, offset=offset)
